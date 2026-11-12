@@ -1,0 +1,235 @@
+
+name: Build Levi War APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Create Game
+        run: |
+          mkdir -p app/src/main/java/com/leviwar/game
+          mkdir -p app/src/main/assets
+
+          cat > settings.gradle <<'EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = 'LeviWar'
+          include ':app'
+          EOF
+
+          cat > build.gradle <<'EOF'
+          plugins {
+              id 'com.android.application' version '8.6.1' apply false
+          }
+          EOF
+
+          cat > app/build.gradle <<'EOF'
+          plugins {
+              id 'com.android.application'
+          }
+          android {
+              namespace 'com.leviwar.game'
+              compileSdk 35
+              defaultConfig {
+                  applicationId 'com.leviwar.game'
+                  minSdk 23
+                  targetSdk 35
+                  versionCode 1
+                  versionName '1.0'
+              }
+          }
+          EOF
+
+          cat > app/src/main/AndroidManifest.xml <<'EOF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <application
+                  android:theme="@android:style/Theme.Material.Light.NoActionBar"
+                  android:label="LEVI WAR">
+                  <activity
+                      android:name=".MainActivity"
+                      android:screenOrientation="landscape"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          cat > app/src/main/java/com/leviwar/game/MainActivity.java <<'EOF'
+          package com.leviwar.game;
+
+          import android.app.Activity;
+          import android.os.Bundle;
+          import android.webkit.WebView;
+          import android.webkit.WebSettings;
+          import android.view.View;
+
+          public class MainActivity extends Activity {
+              @Override
+              public void onCreate(Bundle b) {
+                  super.onCreate(b);
+                  getWindow().getDecorView().setSystemUiVisibility(5894 | 1024 | 512);
+                  WebView w = new WebView(this);
+                  WebSettings s = w.getSettings();
+                  s.setJavaScriptEnabled(true);
+                  w.setBackgroundColor(0xFF090D15);
+                  setContentView(w);
+                  w.loadUrl("file:///android_asset/index.html");
+              }
+          }
+          EOF
+
+          cat > app/src/main/assets/index.html <<'EOF'
+          <!DOCTYPE html>
+          <html lang="ar">
+          <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+          <title>LEVI WAR</title>
+          <style>
+          *{box-sizing:border-box}
+          body{margin:0;background:#101827;color:white;font-family:Arial;overflow:hidden;touch-action:none}
+          canvas{width:100vw;height:100vh;display:block}
+          #hud{position:absolute;top:10px;left:10px;font-size:18px}
+          #controls{position:absolute;bottom:15px;width:100%;display:flex;justify-content:space-between;padding:10px}
+          button{width:65px;height:65px;border-radius:50%;background:#263c59;color:white;border:2px solid white;font-size:24px}
+          #menu{position:absolute;inset:0;background:#080d18;display:grid;place-items:center;text-align:center}
+          #menu button{width:auto;border-radius:10px;padding:12px 35px;background:#a3243e}
+          </style>
+          </head>
+          <body>
+          <canvas id="c"></canvas>
+          <div id="hud">⚔️ LEVI | ❤️ <span id="hp">100</span> | النقاط: <span id="score">0</span></div>
+          <div id="controls">
+          <div><button id="left">◀</button><button id="right">▶</button></div>
+          <div><button id="jump">⬆</button><button id="hit">⚔</button></div>
+          </div>
+          <div id="menu">
+          <div><h1>LEVI WAR</h1><h3>حرب العمالقة</h3><p>قاتل الأعداء وأنقذ المملكة!</p><button onclick="start()">ابدأ المعركة</button></div>
+          </div>
+          <script>
+          const c=document.getElementById('c'),x=c.getContext('2d');
+          let W,H,p,foes=[],score=0,playing=false,keys={};
+          function resize(){c.width=innerWidth;c.height=innerHeight;W=c.width;H=c.height}
+          onresize=resize;resize();
+          ['left','right','jump','hit'].forEach(k=>{
+            let b=document.getElementById(k);
+            b.onpointerdown=e=>{e.preventDefault();keys[k]=true};
+            b.onpointerup=b.onpointercancel=()=>keys[k]=false;
+            b.onpointerleave=()=>keys[k]=false;
+          });
+          function start(){
+            p={x:W*.3,y:H*.7,hp:100,v:0,face:1,ground:true};
+            foes=[];score=0;playing=true;
+            document.getElementById('menu').style.display='none';
+            for(let i=0;i<5;i++)spawn();
+          }
+          function spawn(){
+            foes.push({x:W+Math.random()*200,y:H*.7,hp:2});
+          }
+          function draw(){
+            x.fillStyle='#111d30';x.fillRect(0,0,W,H);
+            x.fillStyle='#263347';x.fillRect(0,H*.76,W,H*.24);
+            x.fillStyle='#aab8cc';x.beginPath();x.arc(W*.8,H*.16,35,0,7);x.fill();
+            for(let i=0;i<8;i++){
+              x.fillStyle='#202b40';x.fillRect(i*W/7,H*.35,45,H*.4);
+            }
+            if(!p)return;
+            x.fillStyle='#d5e3f1';x.fillRect(p.x-12,p.y-65,24,40);
+            x.fillStyle='#e7c7a5';x.beginPath();x.arc(p.x,p.y-78,13,0,7);x.fill();
+            x.fillStyle='#263b50';x.fillRect(p.x-14,p.y-26,12,26);
+            x.fillRect(p.x+2,p.y-26,12,26);
+            x.fillStyle='#eee';x.fillRect(p.x+12*p.face,p.y-52,45*p.face,4);
+            foes.forEach(e=>{
+              x.fillStyle='#743f49';x.fillRect(e.x-17,e.y-65,34,65);
+              x.fillStyle='#d2ad9b';x.beginPath();x.arc(e.x,e.y-76,14,0,7);x.fill();
+              x.fillStyle='red';x.fillRect(e.x-10,e.y-80,5,4);
+              x.fillRect(e.x+5,e.y-80,5,4);
+              x.fillStyle='white';x.fillRect(e.x-18,e.y-99,36,5);
+              x.fillStyle='red';x.fillRect(e.x-18,e.y-99,18*e.hp,5);
+            });
+          }
+          function update(){
+            if(playing){
+              if(keys.left){p.x-=5;p.face=-1}
+              if(keys.right){p.x+=5;p.face=1}
+              p.x=Math.max(15,Math.min(W-15,p.x));
+              if(keys.jump&&p.ground){p.v=-15;p.ground=false}
+              p.v+=.7;p.y+=p.v;
+              if(p.y>H*.7){p.y=H*.7;p.v=0;p.ground=true}
+              if(keys.hit){
+                foes.forEach(e=>{
+                  if(Math.abs(e.x-p.x)<90&&Math.sign(e.x-p.x)===p.face){
+                    e.hp=0;score+=100;
+                  }
+                });
+                keys.hit=false;
+              }
+              foes.forEach(e=>{
+                e.x-=1.5;
+                if(e.x<p.x+25&&e.x>p.x-25)p.hp-=.2;
+              });
+              foes=foes.filter(e=>e.hp>0);
+              if(foes.length===0)for(let i=0;i<5;i++)spawn();
+              document.getElementById('hp').textContent=Math.ceil(p.hp);
+              document.getElementById('score').textContent=score;
+              if(p.hp<=0){
+                playing=false;
+                document.querySelector('#menu h1').textContent='انتهت المعركة!';
+                document.querySelector('#menu h3').textContent='نقاطك: '+score;
+                document.querySelector('#menu').style.display='grid';
+              }
+            }
+            draw();requestAnimationFrame(update);
+          }
+          update();
+          </script>
+          </body>
+          </html>
+          EOF
+
+      - name: Build APK
+        run: gradle assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: LEVI-WAR-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
